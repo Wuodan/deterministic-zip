@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+###############################################################################
+# deterministic-zip
+#
+# Create a ZIP archive with reproducible checksum
+# By removing extra file attributes and fixed timestamps (1970-01-01)
+#
+# Usage:
+#   ./deterministic-zip output.zip file1 [file2 ...]
+###############################################################################
+
+# Ensure required tools are available
+command -v zip >/dev/null || { echo "❌ zip command not found" >&2; exit 1; }
+command -v uuidgen >/dev/null || { echo "❌ uuidgen command not found" >&2; exit 1; }
+
+# --- Argument parsing ---
+if [[ "$#" -lt 2 ]]; then
+  echo "Usage: $0 output.zip file1 [file2 ...]" >&2
+  exit 1
+fi
+
+OUTPUT_ZIP="$1"
+shift
+INPUT_FILES=("$@")
+
+# --- Create temporary directory ---
+TMPDIR="/tmp/$(uuidgen)"
+mkdir -p "$TMPDIR"
+
+# --- Copy all input files/folders at once ---
+cp -r "${INPUT_FILES[@]}" "$TMPDIR/"
+
+# --- Create deterministic ZIP ---
+(
+  cd "$TMPDIR"
+  # --- Normalize timestamps ---
+  find "${INPUT_FILES[@]}" | xargs touch --date='1970-01-01T00:00:00Z'
+  # zip -X removes extra file attributes
+  zip -X --recurse-paths "$OLDPWD/$OUTPUT_ZIP" "${INPUT_FILES[@]}"
+)
+
+# --- Cleanup ---
+rm -rf "$TMPDIR"
+echo "✅ Created deterministic zip: $OUTPUT_ZIP"
